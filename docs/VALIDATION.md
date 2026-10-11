@@ -32,6 +32,8 @@ La paridad encontró bugs en ambos lados: nombres de tensor GGUF vacíos mal rep
 
 La web también se probó en Chromium real (controlado por DevTools Protocol, con archivos reales en el selector): detección, comparación con el Hub (coincidencia y copia manipulada → MG011), sin errores de consola, y diseño en 1100 px y 390 px. SHA-256 en el navegador: nativo hasta 64 MB; por encima, incremental en JS a ~110 MB/s sin cargar el archivo entero.
 
+Rendimiento del motor web (Node 26, mismos archivos que el CLI): pickle de 2-3 M enteros 0.15 s (Python 0.78 s), 200 k objetos 0.3 s (Python 1.6 s), 300 k strings 0.16 s (Python 0.36 s), YOLOv8n 25 ms, GGUF de 372 MB 27 ms. Heap de JS máximo 33 MB, liberado al terminar. En el navegador el motor corre en un Web Worker: durante el análisis de esos archivos el hilo principal se bloqueó como máximo 23 ms (102 ms sin worker).
+
 ## MCP
 
 Probado con Claude Code como cliente real (`claude -p --mcp-config`): la herramienta `modelguard_scan` detectó `subprocess.run` en un pickle malicioso y nada `high` en YOLOv8n.

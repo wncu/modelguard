@@ -5,7 +5,7 @@ export const VERSION = 'web-0.2.0';
 const MAX_OPS = 5_000_000, MAX_STREAMS = 5, MAX_STACK = 1_000_000, MAX_MEMO = 4_000_000;
 const MAX_LINE = 1 << 16, MAX_STR = 512, MAX_INFLATE = 64 * 1024 * 1024, MAX_MEMBERS = 100_000;
 const MAX_ST_HEADER = 16 * 1024 * 1024, MAX_GGUF_META = 256 * 1024 * 1024, MAX_TEMPLATE = 1 << 20;
-const WINDOW = 4 * 1024 * 1024, MAX_SECONDS = 10;
+const WINDOW = 1024 * 1024, MAX_SECONDS = 10;
 
 // ---- rules shared with the CLI -------------------------------------------------------------------
 const EXECUTABLE_SERIALIZATION = new Set(['.pkl', '.pickle', '.pt', '.pth', '.bin', '.ckpt', '.joblib', '.npy', '.npz', '.h5', '.keras', '.mar', '.nemo']);

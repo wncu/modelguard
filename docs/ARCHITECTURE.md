@@ -18,7 +18,7 @@ La CLI no es una sandbox: no abrir repositorios que se modifican concurrentement
 ## Interfaces
 
 - `modelguard/` — motor y CLI en Python (solo biblioteca estándar). `cli.py` recorre archivos, `pickle_scan.py`, `formats.py` y `textscan.py` contienen los analizadores, `mcp.py` es el servidor MCP por stdio sobre las mismas funciones.
-- `web/engine.mjs` — port del motor a JavaScript para el navegador: lee con `Blob.slice`, descomprime con `DecompressionStream` y calcula SHA-256 incremental. `web/app.js` es solo interfaz. `tests/test_web_engine.py` mantiene la paridad con el motor Python.
+- `web/engine.mjs` — port del motor a JavaScript para el navegador: lee con `Blob.slice`, descomprime con `DecompressionStream` y calcula SHA-256 incremental. `web/worker.mjs` lo ejecuta fuera del hilo principal y `web/app.js` es solo interfaz. `tests/test_web_engine.py` mantiene la paridad con el motor Python.
 
 ## Presupuesto de recursos
 

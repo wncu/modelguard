@@ -89,6 +89,22 @@ async function hubMetadata(repo, revision = 'main') {
   return {sha: data.sha, files};
 }
 
+// The engine runs in a module worker (File objects are transferable by structured clone); inline fallback otherwise.
+function runEngine(entries, hash, target) {
+  if (typeof Worker === 'undefined') return inspectAll(entries, {hash, target, onProgress: progress});
+  return new Promise((resolve, reject) => {
+    let worker;
+    try { worker = new Worker('worker.mjs', {type: 'module'}); }
+    catch { resolve(inspectAll(entries, {hash, target, onProgress: progress})); return; }
+    worker.onmessage = ({data}) => {
+      if (data.type === 'progress') progress(data.done, data.total, data.path);
+      else { worker.terminate(); data.type === 'done' ? resolve(data.report) : reject(new Error(data.message)); }
+    };
+    worker.onerror = e => { worker.terminate(); reject(new Error(e.message || 'worker error')); };
+    worker.postMessage({entries, hash, target});
+  });
+}
+
 async function analyze(fileList) {
   if (busy || !fileList.length) return;
   busy = true;
@@ -104,7 +120,7 @@ async function analyze(fileList) {
       setStatus('Consultando metadatos del Hub…');
       hub = await hubMetadata(repo, revision);
     }
-    const report = await inspectAll(entries, {hash: $('hash').checked || !!hub, target: folder || 'local-selection', onProgress: progress});
+    const report = await runEngine(entries, $('hash').checked || !!hub, folder || 'local-selection');
     if (hub) compareWithHub(report, hub.files, hub.sha, repo, true);
     report.summary = summarize(report, report.summary.bytes, Date.now() - report.summary.elapsed_seconds * 1000);
     render(report);
