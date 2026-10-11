@@ -465,6 +465,7 @@ def main(argv=None):
     ver.add_argument('repo')
     ver.add_argument('--revision', default='main')
     ver.add_argument('--partial', action='store_true', help='Do not report Hub files missing locally')
+    sub.add_parser('mcp', help='Run the Model Context Protocol server on stdio (for Claude Code, IDEs)')
     hub = sub.add_parser('hub', help='Inspect public Hub metadata without downloading weights')
     hub.add_argument('target')
     hub.add_argument('--revision', default='main')
@@ -479,6 +480,9 @@ def main(argv=None):
         p.add_argument('--fail-on', choices=('review', 'high'), help='Exit 1 if a finding of this severity or '
                        'higher exists (for CI)')
     args = parser.parse_args(argv)
+    if args.mode == 'mcp':
+        from .mcp import main as mcp_main
+        return mcp_main()
     _lower_priority()
     try:
         if args.mode == 'scan':

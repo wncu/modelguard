@@ -12,6 +12,7 @@ dependencies = []
 
 [project.scripts]
 modelguard = "modelguard.cli:main"
+modelguard-mcp = "modelguard.mcp:main"
 
 [tool.setuptools]
 packages = ["modelguard"]
