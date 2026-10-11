@@ -8,4 +8,3 @@ reports/
 *.pt
 *.pth
 build/
-*.egg-info/
