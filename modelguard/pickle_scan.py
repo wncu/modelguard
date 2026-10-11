@@ -136,7 +136,7 @@ def scan_file(path):
 
 
 def _scan_zip(path):
-    found, notes = [], []
+    found, notes, budget = [], [], 2 * MAX_PICKLE
     try:
         with zipfile.ZipFile(path) as archive:
             for info in archive.infolist():
@@ -144,9 +144,10 @@ def _scan_zip(path):
                     notes.append('Unsafe archive member name: ' + info.filename)
                 if not info.filename.endswith(('.pkl', 'data.pkl')):
                     continue
-                if info.file_size > MAX_PICKLE:
-                    notes.append('Archive pickle exceeds size limit: ' + info.filename)
+                if info.file_size > MAX_PICKLE or info.file_size > budget:
+                    notes.append('Archive pickle exceeds size limit or total budget: ' + info.filename)
                     continue
+                budget -= info.file_size
                 with archive.open(info) as member:
                     data = member.read(MAX_PICKLE + 1)
                 f, n = scan_pickle(data)

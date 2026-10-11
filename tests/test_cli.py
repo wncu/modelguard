@@ -62,4 +62,28 @@ class ContentIntegrationTests(unittest.TestCase):
         self.assertFalse(report['coverage']['content'])
         self.assertEqual(report['status'], 'insufficient_evidence')
 
+class VerifyTests(unittest.TestCase):
+    def run_verify(self, declared, partial=False):
+        from modelguard.cli import verify
+        payload = {'sha': 'b' * 40, 'siblings': [
+            {'rfilename': 'w.safetensors', 'size': 3, 'lfs': {'sha256': declared}},
+            {'rfilename': 'extra.json', 'size': 2}]}
+        with tempfile.TemporaryDirectory() as tmp, patch('modelguard.cli.urlopen') as fetch:
+            (Path(tmp) / 'w.safetensors').write_bytes(b'abc')
+            fetch.return_value.__enter__.return_value.read.return_value = json.dumps(payload).encode()
+            return verify(tmp, 'org/model', partial=partial)
+
+    def test_match_and_mismatch(self):
+        good = hashlib.sha256(b'abc').hexdigest()
+        rules = [f['rule'] for f in self.run_verify(good)['findings']]
+        self.assertNotIn('MG011', rules)
+        self.assertIn('MG012', rules)
+        bad = self.run_verify('0' * 64)
+        self.assertIn(('MG011', 'high'), {(f['rule'], f['severity']) for f in bad['findings']})
+        self.assertEqual(bad['revision'], 'b' * 40)
+
+    def test_partial_hides_missing(self):
+        good = hashlib.sha256(b'abc').hexdigest()
+        self.assertNotIn('MG012', [f['rule'] for f in self.run_verify(good, True)['findings']])
+
 if __name__=='__main__': unittest.main()

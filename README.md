@@ -11,6 +11,7 @@ python -m pip install -e .
 modelguard scan /path/to/model --output report.json
 modelguard scan /path/to/model --hash --output report.json
 modelguard hub owner/model --revision main --output report.json
+modelguard verify /path/to/model owner/model --revision main --partial
 python -m http.server 8000 --directory web --bind 127.0.0.1
 ```
 
@@ -24,6 +25,7 @@ Open http://127.0.0.1:8000. Import the CLI report or inspect selected filenames.
 | Local file inventory, extension risk signals | Implemented |
 | SHA-256 streaming | CLI, explicit `--hash` |
 | `config.json` / `auto_map` review signal | Local CLI, bounded 2 MiB |
+| `verify`: local SHA-256 vs Hub LFS hashes, format detection by signature | Implemented (LFS files only) |
 | JSON export and browser history | Implemented, one report up to 1 MiB in localStorage |
 | Pickle opcode scanning (raw and PyTorch zip), GGUF/safetensors header validation | Local CLI, static, bounded; allowlist heuristic |
 | Python AST, dependency review, signature (not just extension) confirmation | Planned |

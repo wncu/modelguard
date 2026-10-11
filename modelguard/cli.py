@@ -139,20 +139,57 @@ def hub_scan(repo, revision='main'):
     report['limitations'].append('Hub metadata only. Declared hashes are not locally verified. No weights or repository code downloaded. No private tokens supported.')
     return report
 
+def verify(target, repo, revision='main', partial=False):
+    """Compare locally computed SHA-256 with Hub-declared LFS hashes. Non-LFS files cannot be compared by SHA-256."""
+    local = local_scan(target, True)
+    remote = hub_scan(repo, revision)
+    local['revision'] = remote['revision']
+    local['limitations'].append(f'Compared against Hub {repo} at {remote["revision"]}; only LFS files carry a SHA-256 to compare.')
+    declared = {f['path']: f for f in remote['files']}
+    present = {f['path']: f for f in local['files']}
+    compared = 0
+    for path, item in present.items():
+        ref = declared.get(path)
+        if ref is None:
+            local['findings'].append({'rule': 'MG012', 'severity': 'review', 'file': path,
+                                      'message': 'File not present in the Hub revision'})
+        elif ref.get('declared_lfs_sha256'):
+            compared += 1
+            if ref['declared_lfs_sha256'] != item.get('sha256'):
+                local['findings'].append({'rule': 'MG011', 'severity': 'high', 'file': path,
+                                          'message': 'SHA-256 differs from the hash declared by the Hub'})
+    for path in declared:
+        if path not in present and not partial:
+            local['findings'].append({'rule': 'MG012', 'severity': 'review', 'file': path,
+                                      'message': 'Hub file missing locally'})
+    local['limitations'].append(f'{compared} file(s) compared by SHA-256; others unverifiable by this method.')
+    return local
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='mode', required=True)
     local = sub.add_parser('scan', help='Inspect a local file or directory')
     local.add_argument('target')
     local.add_argument('--hash', action='store_true', help='Stream SHA-256 over all local files; may take hours')
+    ver = sub.add_parser('verify', help='Compare a local copy with the Hub revision (LFS SHA-256)')
+    ver.add_argument('target')
+    ver.add_argument('repo')
+    ver.add_argument('--revision', default='main')
+    ver.add_argument('--partial', action='store_true', help='Do not report Hub files missing locally')
     hub = sub.add_parser('hub', help='Inspect public Hub metadata without downloading weights')
     hub.add_argument('target')
     hub.add_argument('--revision', default='main')
-    for p in (local, hub):
+    for p in (local, hub, ver):
         p.add_argument('--output', type=Path)
     args = parser.parse_args()
     try:
-        result = local_scan(args.target, args.hash) if args.mode == 'scan' else hub_scan(args.target, args.revision)
+        if args.mode == 'scan':
+            result = local_scan(args.target, args.hash)
+        elif args.mode == 'verify':
+            result = verify(args.target, args.repo, args.revision, args.partial)
+        else:
+            result = hub_scan(args.target, args.revision)
         text = json.dumps(result, ensure_ascii=False, indent=2)
         if args.output:
             args.output.write_text(text + '\n', encoding='utf-8')
