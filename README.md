@@ -4,20 +4,39 @@ Open-source, local-first model supply-chain inspection. **Evidence, not a safety
 
 Version 0.2: a static browser app and a dependency-free Python CLI (standard library only, Python 3.10+). No ModelGuard backend, hosted GPU, uploads, accounts or telemetry. Users pay only for their own compute/network and any hosting they choose. Public Hugging Face metadata queries contact Hugging Face directly.
 
-## Run
+## Three ways to use it
+
+All three share the same rules (MG001-MG016) and never execute, import or unpickle model content.
+
+**1. CLI** (Python 3.10+, standard library only)
 
 ```bash
-python -m pip install -e .
+python -m pip install git+https://github.com/wncu/modelguard   # or: pip install -e . from a checkout
 modelguard scan /path/to/model --format text            # human summary
 modelguard scan /path/to/model --hash --output report.json
 modelguard scan ~/.cache/huggingface/hub/models--org--name --hash   # HF cache: blobs verified by name
 modelguard hub owner/model --revision main --output report.json
 modelguard verify /path/to/model owner/model --revision main --partial
 modelguard scan ./model --fail-on high                    # CI: exit 1 on high findings
-python -m http.server 8000 --directory web --bind 127.0.0.1
 ```
 
-Open http://127.0.0.1:8000. Import the CLI report or inspect selected filenames. Without `--hash` only headers and pickle opcodes are read, so a scan takes milliseconds to seconds regardless of model size. `--hash` reads every byte (about 500 MB/s per core on CPUs without SHA extensions); `--jobs N` hashes N files in parallel. No model weights are fetched by `hub`. A file's extension is a review signal, not proof of its actual format or an exploit.
+Without `--hash` only headers and pickle opcodes are read, so a scan takes milliseconds to seconds regardless of model size. `--hash` reads every byte (about 500 MB/s per core on CPUs without SHA extensions); `--jobs N` hashes N files in parallel.
+
+**2. MCP server** for Claude Code, Claude Desktop and IDEs (stdio, no extra dependencies)
+
+```bash
+claude mcp add modelguard -- modelguard mcp          # or: modelguard-mcp
+```
+
+Read-only tools: `modelguard_scan(path, hash?, follow_symlinks?, include_files?)`, `modelguard_hub(repo, revision?)` and `modelguard_verify(path, repo, revision?, partial?)`. Results are compact (findings first, at most 200) with both text and `structuredContent`. For Claude Desktop, add `{"command": "modelguard", "args": ["mcp"]}` under `mcpServers`.
+
+**3. Web app** (static, works offline once loaded)
+
+```bash
+python scripts/serve.py        # http://127.0.0.1:8000, or host web/ on any static host (GitHub Pages)
+```
+
+Pick files or a whole folder: the browser engine (`web/engine.mjs`, a port of the CLI checks) reads them locally in slices, so multi-GB models never load into memory and nothing is uploaded. It can also hash and compare a folder with a Hub revision. Python AST review (MG013) and symlink handling are CLI-only. Its results are kept identical to the CLI by a parity test.
 
 ## Implemented vs planned
 
@@ -31,6 +50,7 @@ Open http://127.0.0.1:8000. Import the CLI report or inspect selected filenames.
 | `auto_map` / `custom_pipelines` in config files; Python AST of shipped `.py` files | Implemented, static |
 | SHA-256: local streaming, HF cache blob names, `verify` against Hub LFS hashes | Implemented |
 | JSON/text output, `--fail-on` for CI, browser history | Implemented |
+| MCP server (stdio) and in-browser content analysis with CLI parity | Implemented |
 | Keras/HDF5 Lambda layers, ONNX, archives other than zip | Planned (archives flagged MG016) |
 | Behavioral trigger tests, tool-call evaluation, weight analysis | Research roadmap; not implemented |
 | "Clean" / "100% safe" badge | Deliberately unsupported |
@@ -52,8 +72,8 @@ Validation: every malicious sample of the public picklescan test corpus that can
 - [Security policy](SECURITY.md)
 
 ```bash
-python scripts/check.py      # unit tests + JS syntax
+python scripts/check.py      # unit tests, CLI/web parity (needs Node 20+), JS syntax
 python scripts/bench.py      # synthetic worst cases: time and peak memory
 ```
 
-Host `web/` on any static host, including GitHub Pages, without an API server. Do not connect private tokens to a public browser app. CLI package is not published on PyPI; install from the checked-out source.
+The CLI package is not published on PyPI; install from GitHub or a checkout. Publishing notes: [docs/PUBLISHING.md](docs/PUBLISHING.md).

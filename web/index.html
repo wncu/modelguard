@@ -1,3 +1,67 @@
 <!doctype html>
-<html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src https://huggingface.co; object-src 'none'; base-uri 'none'"><title>ModelGuard — evidencia, en tu PC</title><link rel="stylesheet" href="style.css">
-<body><header><b>◈ ModelGuard</b><span>OPEN SOURCE · LOCAL FIRST</span></header><main><p class="eyebrow">MODEL SUPPLY CHAIN / v0.2</p><h1>Inspecciona el modelo.<br>Conoce los límites.</h1><p class="intro">Inventario de archivos y revisión de riesgos. Sin subir pesos, sin inferencia remota, sin promesas de «100 % seguro».</p><section><h2>01 / Repositorio público</h2><label for="repo">Identificador de Hugging Face</label><div class="row"><input id="repo" placeholder="owner/model" autocomplete="off"><button id="hub">Consultar metadatos</button></div><p>La consulta conecta tu navegador directamente con Hugging Face. Solo obtiene metadatos públicos, nunca pesos. Si CORS lo impide, usa la CLI.</p></section><section><h2>02 / Archivos en tu equipo</h2><label for="files">Selecciona archivos para revisar sus nombres y tamaños</label><input id="files" type="file" multiple><p>Los archivos no se suben ni se leen completos. El navegador solo revisa extensiones. Para analizar pickles, safetensors, GGUF y plantillas sin ejecutarlos, usa <code>modelguard scan</code> e importa el informe.</p><label for="report">Importar informe JSON de la CLI (máximo 2 MiB)</label><input id="report" type="file" accept=".json,application/json"></section><section><div class="row"><h2>03 / Evidencia</h2><button id="export" disabled>Exportar JSON</button><button id="clear">Borrar historial</button></div><p id="status" role="status">Sin análisis. Backdoors: no evaluados.</p><pre id="result">No hay evidencia todavía.</pre><p>Solo se conserva el último informe de hasta 1 MiB en localStorage. Puede perderse al borrar datos del navegador. Exporta para conservarlo. Los informes importados no están autenticados.</p></section><footer>Sin cuenta · Sin telemetría · Sin backend de ModelGuard<br>La ausencia de hallazgos no prueba la ausencia de amenazas.</footer></main><script src="app.js"></script></body></html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src https://huggingface.co; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>ModelGuard</title>
+<meta name="description" content="Inspección local de modelos de IA: pickles, safetensors, GGUF y plantillas de chat, sin subir archivos.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Cpath d=%27M16 2 29 16 16 30 3 16Z%27 fill=%27%237de7c2%27/%3E%3Cpath d=%27M16 9 23 16 16 23 9 16Z%27 fill=%27%230b1119%27/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header><b>◈ ModelGuard</b><span>OPEN SOURCE · LOCAL FIRST</span></header>
+<main>
+<p class="eyebrow">MODEL SUPPLY CHAIN / v0.2</p>
+<h1>Inspecciona el modelo.<br>Conoce los límites.</h1>
+<p class="intro">Análisis estático de pickles, PyTorch, safetensors, GGUF y plantillas de chat, en tu navegador. Los archivos se leen por partes en tu equipo y nunca se suben. Sin promesas de «100 % seguro».</p>
+
+<section aria-labelledby="local-title">
+<h2 id="local-title">01 / Archivos en tu equipo</h2>
+<div class="row picks">
+<label class="pick" for="files">Elegir archivos<input id="files" type="file" multiple></label>
+<label class="pick" for="folder">Elegir carpeta<input id="folder" type="file" webkitdirectory multiple></label>
+</div>
+<div class="options">
+<label class="check"><input id="hash" type="checkbox"> Calcular SHA-256 (lee todos los bytes; lento en modelos grandes)</label>
+<label for="compare">Comparar con un repo del Hub (opcional, activa SHA-256)</label>
+<input id="compare" placeholder="owner/model o owner/model@revision" autocomplete="off" spellcheck="false">
+</div>
+<p class="hint">Detecta pickles con código (también dentro de .pt, .bin, .npz o con otro nombre), estructuras safetensors/GGUF inconsistentes, inyección en plantillas Jinja y <code>auto_map</code>. El análisis AST de archivos Python solo está en la CLI.</p>
+<div class="progress" id="progress" hidden><div id="bar"></div></div>
+</section>
+
+<section aria-labelledby="hub-title">
+<h2 id="hub-title">02 / Repositorio público</h2>
+<label for="repo">Identificador de Hugging Face</label>
+<div class="row"><input id="repo" placeholder="owner/model" autocomplete="off" spellcheck="false"><button id="hub">Consultar metadatos</button></div>
+<p class="hint">Tu navegador consulta directamente a Hugging Face. Solo metadatos públicos fijados a un commit, nunca pesos.</p>
+</section>
+
+<section aria-labelledby="ev-title">
+<div class="row"><h2 id="ev-title">03 / Evidencia</h2><button id="export" disabled>Exportar JSON</button><button id="clear" class="ghost">Borrar</button></div>
+<p id="status" role="status">Sin análisis. Backdoors: no evaluados.</p>
+<div id="counts" class="counts" hidden></div>
+<ol id="findings" class="findings"></ol>
+<details><summary>Informe JSON</summary><pre id="result">No hay evidencia todavía.</pre></details>
+<label for="report">Importar informe JSON de la CLI (máximo 2 MiB)</label>
+<input id="report" type="file" accept=".json,application/json">
+<p class="hint">Se conserva solo el último informe (hasta 1 MiB) en este navegador. Los informes importados no están autenticados.</p>
+</section>
+
+<section aria-labelledby="cli-title">
+<h2 id="cli-title">04 / Terminal y agentes (MCP)</h2>
+<p>Misma lógica, sin dependencias (Python 3.10+):</p>
+<pre>pip install git+https://github.com/wncu/modelguard
+modelguard scan ./modelo --format text
+modelguard verify ./modelo owner/model --partial
+claude mcp add modelguard -- modelguard mcp</pre>
+<p class="hint">El servidor MCP expone herramientas de solo lectura (<code>modelguard_scan</code>, <code>modelguard_hub</code>, <code>modelguard_verify</code>) para Claude Code, Claude Desktop o tu IDE.</p>
+</section>
+
+<footer>Sin cuenta · Sin telemetría · Sin backend<br>La ausencia de hallazgos no prueba la ausencia de amenazas.</footer>
+</main>
+<script type="module" src="app.js"></script>
+</body>
+</html>

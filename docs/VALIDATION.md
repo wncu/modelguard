@@ -20,6 +20,22 @@ Resultados de la versión 0.2.0 (2026-10-11, Python 3.14, Intel i5-9500 sin exte
 | Caché real de Hugging Face (8 datasets, 1 390 archivos, almacenamiento xet) | Enlaces seguidos dentro de la caché, cada blob verificado contra su nombre SHA-256, sin MG003 ni MG011 falsos. |
 | `verify` contra el Hub | Coincidencia en archivos íntegros; un byte añadido produce MG011 (`verify`) y MG008 (estructura). |
 
+## Paridad CLI ↔ web
+
+El motor del navegador (`web/engine.mjs`) se ejecuta en Node contra el motor Python y se comparan los hallazgos uno a uno (regla, severidad, archivo y mensaje; en MG007 sobre archivos corruptos solo regla, severidad y archivo):
+
+- Corpus adversarial sintético (evasiones de pickle, zips con nombres falsos, flag de cifrado, ZIP64 al estilo PyTorch, npz, safetensors y GGUF corruptos, plantillas maliciosas) y SHA-256: idénticos.
+- Modelos reales (corpus de picklescan, tiny-gpt2, tiny-random-gpt2, YOLOv8n, stories GGUF, Qwen2.5 GGUF de 372 MB con hash): idénticos.
+- 22 500 archivos mutados: 1 diferencia, un MG007 adicional en JS sobre un deflate corrupto (la librería del navegador reporta errores que zlib tolera).
+
+La paridad encontró bugs en ambos lados: nombres de tensor GGUF vacíos mal reportados y un `UnicodeDecodeError` que abortaba todo el escaneo en Python; en JS, zips con datos antepuestos, registros ZIP64 de PyTorch, nombres CP437/NUL, cabeceras con UTF-8 inválido y salida parcial de deflate.
+
+La web también se probó en Chromium real (controlado por DevTools Protocol, con archivos reales en el selector): detección, comparación con el Hub (coincidencia y copia manipulada → MG011), sin errores de consola, y diseño en 1100 px y 390 px. SHA-256 en el navegador: nativo hasta 64 MB; por encima, incremental en JS a ~110 MB/s sin cargar el archivo entero.
+
+## MCP
+
+Probado con Claude Code como cliente real (`claude -p --mcp-config`): la herramienta `modelguard_scan` detectó `subprocess.run` en un pickle malicioso y nada `high` en YOLOv8n.
+
 ## Robustez
 
 Fuzzing con mutaciones (bits, truncado, cabeceras aleatorias, inserciones) sobre pickles y sobre los modelos reales con extensiones al azar: 70 000 pickles mutados y 7 000 archivos mutados sin excepciones no controladas ni análisis de más de 2 s.

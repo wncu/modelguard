@@ -15,6 +15,11 @@ CSP restringe scripts a recursos propios y conexiones a Hugging Face. Renderizar
 
 La CLI no es una sandbox: no abrir repositorios que se modifican concurrentemente. Omite symlinks encontrados pero no ofrece protección contra carreras de enlaces ni directorios padre enlazados. Un futuro modo endurecido usará apertura sin seguimiento de enlaces y límites de número de archivos. El MVP consulta HTTPS al dominio fijo; urllib sigue redirecciones del servicio sin credenciales.
 
+## Interfaces
+
+- `modelguard/` — motor y CLI en Python (solo biblioteca estándar). `cli.py` recorre archivos, `pickle_scan.py`, `formats.py` y `textscan.py` contienen los analizadores, `mcp.py` es el servidor MCP por stdio sobre las mismas funciones.
+- `web/engine.mjs` — port del motor a JavaScript para el navegador: lee con `Blob.slice`, descomprime con `DecompressionStream` y calcula SHA-256 incremental. `web/app.js` es solo interfaz. `tests/test_web_engine.py` mantiene la paridad con el motor Python.
+
 ## Presupuesto de recursos
 
 El CLI está pensado para correr en segundo plano sin molestar el equipo.
