@@ -10,9 +10,10 @@
     "target": {"type": "string"},
     "revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
     "status": {"const": "insufficient_evidence"},
-    "files": {"type": "array", "items": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}, "size": {"type": ["integer", "null"], "minimum": 0}, "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "declared_lfs_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"}}}},
-    "findings": {"type": "array", "items": {"type": "object", "required": ["rule", "severity", "file", "message"], "properties": {"rule": {"type": "string"}, "severity": {"enum": ["review", "high"]}, "file": {"type": "string"}, "message": {"type": "string"}}}},
+    "files": {"type": "array", "items": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}, "size": {"type": ["integer", "null"], "minimum": 0}, "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "declared_lfs_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"}, "symlink_target": {"type": "string"}, "same_as": {"type": "string"}}}},
+    "findings": {"type": "array", "items": {"type": "object", "required": ["rule", "severity", "file", "message"], "properties": {"rule": {"type": "string", "pattern": "^(MG[0-9]{3}|extension-review)$"}, "severity": {"enum": ["review", "high"]}, "file": {"type": "string"}, "message": {"type": "string"}}}},
     "coverage": {"type": "object", "required": ["inventory", "content", "behavior", "weights"], "properties": {"inventory": {"type": "boolean"}, "static_formats": {"type": "boolean"}, "content": {"type": "boolean"}, "behavior": {"type": "boolean"}, "weights": {"type": "boolean"}}},
-    "limitations": {"type": "array", "items": {"type": "string"}}
+    "limitations": {"type": "array", "items": {"type": "string"}},
+    "summary": {"type": "object", "properties": {"files": {"type": "integer", "minimum": 0}, "bytes": {"type": "integer", "minimum": 0}, "findings_high": {"type": "integer", "minimum": 0}, "findings_review": {"type": "integer", "minimum": 0}, "elapsed_seconds": {"type": "number", "minimum": 0}}}
   }
 }

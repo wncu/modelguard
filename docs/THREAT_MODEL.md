@@ -6,11 +6,12 @@ Proteger disco/credenciales del visitante, integridad del informe y afirmaciones
 
 | Entrada | Amenaza | Control actual | Pendiente |
 |---|---|---|---|
-| Nombres/extensiones | Manipulación visual, formatos disfrazados | Renderizado textContent, señales no concluyentes | Identificación por firmas, normalización para revisión |
+| Nombres/extensiones | Manipulación visual, formatos disfrazados | Renderizado textContent; identificación por firma de contenido (MG010) también dentro de zips | Normalización Unicode para revisión |
 | JSON importado | XSS, memoria, informe falso | Límite 2 MiB y renderizado como texto | Validación completa con schema y firma opcional |
-| Repo Hub | Código remoto o pesos maliciosos | Consulta solo metadatos, dominio fijo, sin token | Restricción de redirecciones, validación detallada de respuesta |
-| Disco local | Symlinks, carreras, archivos cambiantes | Omitir enlaces observados; lectura sin ejecución | Apertura no-follow, snapshot inmutable, límites de inventario |
-| Parsers futuros | Deserialización ejecutable y DoS | No integrados | Procesos aislados, fuzzing, límites duros |
+| Repo Hub | Código remoto o pesos maliciosos | Consulta solo metadatos, dominio fijo, sin token, redirecciones solo a huggingface.co, validación de tipos de la respuesta | Firmas de autor |
+| Disco local | Symlinks, carreras, archivos cambiantes | Enlaces omitidos salvo dentro de la caché de HF o con `--follow-symlinks`; FIFOs y dispositivos nunca se abren; `.git` omitido; lectura sin ejecución | Apertura no-follow, snapshot inmutable |
+| Parsers (pickle, zip, npy, safetensors, GGUF, JSON, AST) | Deserialización ejecutable y DoS | Nada se deserializa ni ejecuta; límites de bytes, opcodes, tiempo, pila, memo y miembros; fuzzing y pruebas diferenciales | Procesos aislados con límites del sistema operativo |
+| Plantillas de chat | SSTI en Jinja al renderizar (p. ej. CVE-2024-34359) | Se analizan como texto, nunca se renderizan (MG015) | Parser Jinja propio |
 | Inferencia futura | Acceso a red/disco, llamadas no autorizadas | No integrada | Aislamiento OS, tools ficticias, cero secretos reales |
 | Historial local | Otra persona o XSS en el mismo origen lee datos | Informe pequeño, borrado, sin tokens | Advertencias sobre rutas privadas, política de origen dedicada |
 

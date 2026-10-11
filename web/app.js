@@ -2,12 +2,18 @@
 const $ = id => document.getElementById(id);
 const KEY = 'modelguard:last:v1';
 let current;
-function rules(files){return files.filter(f=>/\.(py|sh|so|dll|exe|pkl|pickle|pt|pth|bin)$/i.test(f.path)).map(f=>({rule:'extension-review',file:f.path,severity:'review',message:'Formato o código que requiere revisión. No demuestra malware.'}));}
-function make(target,files){return {schema_version:'1.0',scanner_version:'web-0.1.0',created_at:new Date().toISOString(),target,status:'insufficient_evidence',files,findings:rules(files),coverage:{inventory:true,content:false,behavior:false,weights:false},limitations:['Solo inventario y extensiones. No certifica seguridad. No se ejecutó código ni inferencia.']};}
+const SERIAL=/\.(pkl|pickle|pt|pth|bin|ckpt|joblib|npy|npz|h5|keras|mar|nemo)$/i, CODE=/\.(py|pyc|pyo|pyd|sh|bash|bat|cmd|ps1|so|dll|dylib|exe|js|jar)$/i, ARCHIVE=/\.(7z|rar|tar|tgz|gz|bz2|xz|zst|lz4)$/i;
+function rules(files){const out=[];for(const f of files){
+ if(SERIAL.test(f.path))out.push({rule:'MG001',file:f.path,severity:'review',message:'Serialización potencialmente ejecutable. Analiza el contenido con la CLI.'});
+ if(CODE.test(f.path))out.push({rule:'MG002',file:f.path,severity:'review',message:'Código o binario presente. No se ejecuta.'});
+ if(ARCHIVE.test(f.path))out.push({rule:'MG016',file:f.path,severity:'review',message:'Archivo comprimido no inspeccionado.'});}
+ return out;}
+function make(target,files){return {schema_version:'1.0',scanner_version:'web-0.2.0',created_at:new Date().toISOString(),target,status:'insufficient_evidence',files,findings:rules(files),coverage:{inventory:true,static_formats:false,content:false,behavior:false,weights:false},limitations:['Solo inventario y extensiones (el navegador no lee el contenido). Usa la CLI para analizar pickles, safetensors, GGUF y plantillas. No certifica seguridad.']};}
+function summary(findings){const high=findings.filter(f=>f&&f.severity==='high').length;return (high?high+' hallazgos de severidad ALTA, ':'')+(findings.length-high)+' señales para revisar.';}
 function show(report, imported=false){
  if(!report || report.schema_version!=='1.0' || !Array.isArray(report.files) || !Array.isArray(report.findings) || typeof report.target!=='string') throw new Error('Informe incompatible');
  current=report; const text=JSON.stringify(report,null,2); $('result').textContent=text; $('export').disabled=false;
- $('status').textContent=(imported?'Informe importado sin verificar. ':'')+'Evidencia insuficiente para descartar backdoors. '+report.findings.length+' señales para revisar.';
+ $('status').textContent=(imported?'Informe importado sin verificar. ':'')+'Evidencia insuficiente para descartar backdoors. '+summary(report.findings);
  try{if(new Blob([text]).size<=1024*1024)localStorage.setItem(KEY,text);else{localStorage.removeItem(KEY);$('status').textContent+=' Informe demasiado grande para conservar; expórtalo.';}}catch{$('status').textContent+=' Almacenamiento no disponible; expórtalo.';}
 }
 $('files').addEventListener('change',()=>{try{show(make('local-selection',Array.from($('files').files,f=>({path:f.name,size:f.size}))));}catch(e){$('status').textContent=e.message;}});

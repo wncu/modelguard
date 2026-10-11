@@ -20,7 +20,9 @@ La CLI no es una sandbox: no abrir repositorios que se modifican concurrentement
 El CLI está pensado para correr en segundo plano sin molestar el equipo.
 
 - **GPU: nunca.** No carga tensores ni runtimes de inferencia.
-- **Memoria plana (~25 MB de pico medido).** Solo lee cabeceras y opcodes. Los pickles se analizan en streaming con límites de lectura (32 MB por argumento, 256 MB por flujo, 512 MB por zip); safetensors lee una cabecera de hasta 16 MB; en GGUF los arrays se saltan con `seek` en vez de leerse. El hash usa un único búfer de 1 MiB.
-- **CPU mínima.** El proceso baja su prioridad con `nice 15`, el análisis de pickle tiene tope de 10 s y 5 M opcodes por archivo, y un archivo que supera un límite se reporta como incompleto (MG007) en lugar de agotar recursos.
-- **E/S discreta.** Solo se lee el archivo completo con `--hash`; ahí se pide al kernel descartar la caché de páginas para no desplazar otros datos.
-- **Medido** (Python 3.13, equipo local): GGUF Qwen2.5-0.5B Q4 (372 MB) con `--hash`: 1.7 s, 23 MB; YOLOv8n `.pt`: 0.08 s; pickle de 3 M enteros: ~6 s (tope de opcodes); mutaciones aleatorias de 5 modelos reales: sin fallos ni cuelgues.
+- **Memoria plana.** Los archivos se abren con `mmap` de solo lectura y los parsers saltan por offset los datos grandes (bytes de tensores, strings largos) sin tocarlos, así que el tamaño del modelo no influye. El analizador de pickle guarda los strings del memo como referencias empaquetadas en un `array` (8 bytes por entrada) y solo decodifica los que usa un `STACK_GLOBAL`. Miembros comprimidos de zip: máximo 64 MB descomprimidos. Cabecera safetensors: máximo 16 MB. Hash: un búfer de 1 MiB. Pico medido en el peor caso sintético: 34 MB, de los cuales 18 son Python.
+- **CPU mínima.** El proceso se pone en `nice 19`, y en Linux eso también deja la E/S en la prioridad más baja. El análisis de pickle tiene tope de 10 s y 5 M opcodes por archivo; un archivo que supera un límite se reporta como incompleto (MG007) en lugar de agotar recursos. El hash es secuencial por defecto; `--jobs N` lo paraleliza.
+- **E/S discreta.** Solo `--hash` lee archivos completos, y descarta la caché de páginas cada 64 MB para no desplazar otros datos. Los archivos con el mismo inodo (enlaces de la caché de HF, hardlinks) se leen una vez.
+- **Arranque rápido.** `urllib` solo se importa para `hub` y `verify`: el CLI arranca en ~30 ms.
+
+Cifras detalladas en [VALIDATION.md](VALIDATION.md).
