@@ -25,7 +25,7 @@ class PickleTests(unittest.TestCase):
         self.assertEqual(notes, [])
 
     def test_unknown_global_is_review(self):
-        found, _ = scan_pickle(pickle.dumps(Path('x')))
+        found, _ = scan_pickle(pickle.dumps(__import__('fractions').Fraction(1, 3)))
         self.assertTrue(found and all(sev == 'review' for *_, sev in found))
 
     def test_malformed_pickle_noted(self):
@@ -43,3 +43,30 @@ class PickleTests(unittest.TestCase):
             other = Path(tmp) / 'x.bin'
             other.write_bytes(b'GGUF....')
             self.assertIsNone(scan_file(other))
+
+
+class EvasionTests(unittest.TestCase):
+    def test_evil_in_second_chained_stream(self):
+        found, _ = scan_pickle(pickle.dumps({'a': 1}) + pickle.dumps(Evil()))
+        self.assertTrue(any(sev == 'high' for *_, sev in found))
+
+    def test_gadget_modules_are_high(self):
+        import operator, functools
+        for obj in (operator.attrgetter('x'), functools.partial(print)):
+            found, _ = scan_pickle(pickle.dumps(obj))
+            self.assertTrue(any(sev == 'high' for *_, sev in found), obj)
+
+    def test_renamed_files_detected_by_signature(self):
+        from modelguard.cli import local_scan
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp)
+            (p / 'notes.txt').write_bytes(pickle.dumps(Evil()))
+            (p / 'weights.safetensors').write_bytes(pickle.dumps(Evil()))
+            header = b"{'descr': '|O', 'fortran_order': False, 'shape': (1,), }"
+            header += b' ' * (-(10 + len(header) + 1) % 64) + b'\n'
+            (p / 'obj.npy').write_bytes(b'\x93NUMPY\x01\x00' + len(header).to_bytes(2, 'little') + header + pickle.dumps([Evil()]))
+            report = local_scan(tmp)
+        by_file = {(f['file'], f['rule'], f['severity']) for f in report['findings']}
+        self.assertIn(('notes.txt', 'MG006', 'high'), by_file)
+        self.assertIn(('weights.safetensors', 'MG010', 'high'), by_file)
+        self.assertIn(('obj.npy', 'MG006', 'high'), by_file)

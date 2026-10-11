@@ -9,8 +9,8 @@ from pathlib import Path
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-from .formats import check_gguf, check_safetensors
-from .pickle_scan import scan_file
+from .formats import check_gguf, check_safetensors, sniff
+from .pickle_scan import scan_file, scan_npy
 
 LIMIT = 2 * 1024 * 1024
 
@@ -26,30 +26,35 @@ def findings(names):
                            'message': 'Code or native executable present; not executed or inspected by this rule.'})
     return result
 
-PICKLE_SUFFIXES = {'.pkl', '.pickle', '.pt', '.pth', '.bin', '.ckpt'}
+EXPECTED = {'.safetensors': 'safetensors', '.gguf': 'gguf', '.npy': 'npy'}
 
 
 def content_findings(path, name, size):
-    """Static checks by file type. Parsers read headers/opcodes only and never execute content."""
+    """Static checks chosen by content signature, not extension. Never executes content."""
     out = []
     suffix = path.suffix.lower()
-    if suffix == '.safetensors':
+    kind = sniff(path, size)
+    expected = EXPECTED.get(suffix)
+    if expected and kind != expected:
+        out.append({'rule': 'MG010', 'severity': 'high' if kind in ('pickle', 'zip') else 'review', 'file': name,
+                    'message': f'Extension {suffix} but content signature is {kind or "unknown"}'})
+    if kind == 'safetensors' or (suffix == '.safetensors' and kind is None):
         for issue in check_safetensors(path, size):
             out.append({'rule': 'MG008', 'severity': 'review', 'file': name, 'message': 'safetensors: ' + issue})
-    elif suffix == '.gguf':
+    elif kind == 'gguf' or (suffix == '.gguf' and kind is None):
         for issue in check_gguf(path, size)[0]:
             out.append({'rule': 'MG009', 'severity': 'review', 'file': name, 'message': 'GGUF: ' + issue})
-    elif suffix in PICKLE_SUFFIXES:
-        result = scan_file(path)
+    elif kind in ('pickle', 'zip', 'npy'):
+        result = scan_npy(path) if kind == 'npy' else scan_file(path)
         if result:
-            found, notes, kind = result
+            found, notes, label_kind = result
             seen = set()
             for module, attr, sev in found:
                 if sev and (module, attr) not in seen:
                     seen.add((module, attr))
                     label = 'Dangerous' if sev == 'high' else 'Non-allowlisted'
                     out.append({'rule': 'MG006', 'severity': sev, 'file': name,
-                                'message': f'{label} global in {kind} stream: {module}.{attr} (static opcode scan, not executed)'})
+                                'message': f'{label} global in {label_kind} stream: {module}.{attr} (static opcode scan, not executed)'})
             for note in dict.fromkeys(notes):
                 out.append({'rule': 'MG007', 'severity': 'review', 'file': name, 'message': note})
     return out

@@ -11,6 +11,11 @@ DANGEROUS_MODULES = {
     'runpy', 'webbrowser', 'ctypes', 'marshal', 'pickle', 'cPickle', 'code', 'codeop', 'multiprocessing',
     'asyncio', 'threading', 'signal', 'tempfile', 'urllib', 'http', 'requests', 'ftplib', 'smtplib',
     'telnetlib', 'pip', 'setuptools', 'timeit', 'platform', 'sysconfig', 'pdb', 'bdb', 'ssl',
+    'posixpath', 'ntpath', 'genericpath', 'distutils', 'lib2to3', 'idlelib', 'pydoc', 'trace', 'cProfile',
+    'profile', 'operator', 'functools', 'types', 'io', '_io', 'pathlib', 'glob', 'fileinput', 'linecache',
+    'zipimport', 'imp', 'pkgutil', 'site', 'numpy.testing', 'torch.hub', 'torch.utils.bottleneck',
+    'torch.jit', 'torch.distributed', 'torch._dynamo', 'torch._inductor', 'torch.fx', 'torch.serialization',
+    'dill', 'cloudpickle', 'joblib', 'shelve', 'dbm', 'sqlite3', 'xmlrpc', 'webbrowser', 'smtpd', 'socketserver',
 }
 DANGEROUS_BUILTINS = {'eval', 'exec', 'compile', 'open', '__import__', 'getattr', 'setattr', 'globals',
                       'locals', 'input', 'breakpoint', 'vars', 'delattr'}
@@ -34,16 +39,32 @@ def classify(module, name):
     if (module, name) in SAFE_GLOBALS or (module, name) in SAFE_PREFIXES:
         return None
     root = module.split('.')[0]
-    if root in DANGEROUS_MODULES or (root in ('builtins', '__builtin__') and name in DANGEROUS_BUILTINS):
+    if root in DANGEROUS_MODULES or module in DANGEROUS_MODULES or (root in ('builtins', '__builtin__') and name in DANGEROUS_BUILTINS):
         return 'high'
     return 'review'
 
 
+MAX_STREAMS = 5  # legacy (pre-zip) torch files chain several pickles before the raw storages
+
+
 def scan_pickle(data):
-    """Scan one pickle stream. Returns (globals, notes); globals = [(module, name, severity)]."""
+    """Scan consecutive pickle streams. Returns (globals, notes); globals = [(module, name, severity)]."""
+    found, notes = [], []
+    stream = io.BytesIO(data)
+    for index in range(MAX_STREAMS):
+        f, n = _scan_stream(stream)
+        found += f
+        notes += n
+        if n or stream.read(1) != b'\x80':
+            break
+        stream.seek(-1, 1)
+    return found, notes
+
+
+def _scan_stream(stream):
     found, notes, memo, strings = [], [], {}, []
     try:
-        for count, (op, arg, _pos) in enumerate(pickletools.genops(io.BytesIO(data))):
+        for count, (op, arg, _pos) in enumerate(pickletools.genops(stream)):
             if count > MAX_OPS:
                 notes.append('Opcode limit reached; scan incomplete')
                 break
@@ -67,11 +88,29 @@ def scan_pickle(data):
                     module, name = strings[-2], strings[-1]
                     found.append((module, name, classify(module, name)))
                 else:
-                    found.append(('?', '?', 'review'))
+                    found.append(('?', '?', 'high'))
                     notes.append('STACK_GLOBAL with unresolved operands')
     except Exception as exc:  # genops raises ValueError/KeyError/struct errors on malformed data
         notes.append('Malformed or truncated pickle: ' + type(exc).__name__)
     return found, notes
+
+
+def scan_npy(path):
+    """numpy .npy: only object arrays embed a pickle after the header. Returns None for plain arrays."""
+    with open(path, 'rb') as stream:
+        head = stream.read(10)
+        if len(head) < 10 or head[:6] != b'\x93NUMPY':
+            return None
+        major = head[6]
+        hlen = int.from_bytes(head[8:10], 'little') if major == 1 else int.from_bytes(head[8:10] + stream.read(2), 'little')
+        header = stream.read(min(hlen, 65536))
+        if b"'O'" not in header and b'|O' not in header and b'"O"' not in header:
+            return None
+        data = stream.read(MAX_PICKLE + 1)
+    if len(data) > MAX_PICKLE:
+        return [], ['npy object payload exceeds size limit; not scanned'], 'npy-object'
+    found, notes = scan_pickle(data)
+    return found, notes, 'npy-object'
 
 
 def scan_file(path):

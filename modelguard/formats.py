@@ -151,3 +151,24 @@ def check_gguf(path, size):
         except (ValueError, struct.error) as exc:
             issues.append(f'Malformed GGUF: {exc}')
     return issues, info
+
+
+def sniff(path, size):
+    """Identify a file by content signature. Returns one of gguf, safetensors, torch-zip, zip, npy, pickle, or None."""
+    with open(path, 'rb') as stream:
+        head = stream.read(16)
+    if head[:4] == b'GGUF':
+        return 'gguf'
+    if head[:6] == b'\x93NUMPY':
+        return 'npy'
+    if head[:2] == b'PK':
+        return 'zip'
+    if head[:1] == b'\x80' and len(head) > 1 and head[1] in range(2, 6):
+        return 'pickle'
+    if len(head) >= 9:
+        (n,) = struct.unpack('<Q', head[:8])
+        if head[8:9] == b'{' and 8 < 8 + n <= size and n <= MAX_ST_HEADER:
+            return 'safetensors'
+    if head[:1] in (b'(', b']', b'}') and size > 2:
+        return 'pickle'  # protocol 0/1 streams; heuristic
+    return None
