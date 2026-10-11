@@ -470,8 +470,8 @@ def _scan_zip(path, buf):
                                         '(some loaders ignore the flag)')
                 result.found += found
                 result.notes += [f'{fname[:120]}: {n}' for n in notes]
-    except (zipfile.BadZipFile, zipfile.LargeZipFile, NotImplementedError, RuntimeError, OSError, EOFError) as exc:
-        result.notes.append('Unreadable zip archive: ' + type(exc).__name__)
+    except (zipfile.BadZipFile, zipfile.LargeZipFile, NotImplementedError, RuntimeError, OSError, EOFError, ValueError):
+        result.notes.append('Unreadable or corrupt zip archive')
     return result
 
 

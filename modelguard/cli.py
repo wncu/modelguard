@@ -67,7 +67,7 @@ def _pickle_findings(result, name):
     for package, names in review.items():
         shown = ', '.join(list(names)[:4]) + (f' (+{len(names) - 4} more)' if len(names) > 4 else '')
         out.append(finding('MG006', 'review', name, f'{result.kind} stream imports {len(names)} non-allowlisted '
-                           f'global(s) from package {package!r}: {shown}. Loading would run code from that package.'))
+                           f"global(s) from package '{package}': {shown}. Loading would run code from that package."))
     for note in dict.fromkeys(result.notes):
         out.append(finding('MG007', 'review', name, note))
     for rule, sev, message in result.flags:
@@ -295,6 +295,9 @@ def local_scan(target, hashes=False, follow=False, jobs=1):
             report['limitations'].append(f"Could not read {item['path']}: {type(exc).__name__}")
             report['findings'].append(finding('MG007', 'review', item['path'],
                                               f'File not inspected: {exc.strerror or exc}'))
+        except Exception as exc:          # a parser bug on one hostile file must never abort the whole scan
+            report['findings'].append(finding('MG007', 'review', item['path'],
+                                              f'Inspection error ({type(exc).__name__}); file not fully inspected'))
     report['findings'] += findings(x['path'] for x in report['files'] if 'same_as' not in x)
     report['coverage']['inventory'] = True
     report['coverage']['static_formats'] = True

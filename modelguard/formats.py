@@ -27,7 +27,7 @@ def check_safetensors(path, size):
             return ['File shorter than 8-byte header length']
         (n,) = struct.unpack('<Q', raw)
         if n > MAX_ST_HEADER or 8 + n > size:
-            return [f'Header length {n} exceeds limit or file size']
+            return [f'Header length {_count(n)} exceeds limit or file size']
         header = stream.read(n)
     issues = []
     if not header.startswith(b'{'):
@@ -63,7 +63,7 @@ def check_safetensors(path, size):
             expected = (ST_BITS[dtype] * count + 7) // 8
         else:
             expected = None
-            issues.append(f'Unknown dtype {str(dtype)[:20]!r} for {name[:80]}')
+            issues.append(f'Unknown dtype {json.dumps(str(dtype)[:20], ensure_ascii=False)} for {name[:80]}')
         if expected is not None and expected != end - begin:
             issues.append(f'Byte span does not match dtype/shape: {name[:80]}')
         spans.append((begin, end, name))
@@ -88,6 +88,11 @@ GGML_TYPES = {0: (1, 4), 1: (1, 2), 2: (32, 18), 3: (32, 20), 6: (32, 22), 7: (3
               21: (256, 110), 22: (256, 82), 23: (256, 136), 24: (1, 1), 25: (1, 2), 26: (1, 4), 27: (1, 8),
               28: (1, 8), 29: (256, 56), 30: (1, 2), 34: (256, 54), 35: (256, 66), 39: (32, 17)}
 _U4, _U8 = struct.Struct('<I'), struct.Struct('<Q')
+
+
+def _count(n):
+    """Byte counts in messages; values beyond 2**53 are attacker-chosen noise, shown identically by the web engine."""
+    return str(n) if n < 2 ** 53 else 'an out-of-range number of'
 
 
 class _Reader:
@@ -187,7 +192,8 @@ def _parse_gguf(r, size, issues, info):
         return
     alignment, templates, keys = 32, {}, set()
     for _ in range(kvs):
-        key = r.string(keep=4096) or '<long key>'
+        key = r.string(keep=4096)
+        key = '<long key>' if key is None else key
         if key in keys:
             issues.append(f'Duplicate metadata key {key[:60]}')
         keys.add(key)
@@ -209,7 +215,8 @@ def _parse_gguf(r, size, issues, info):
         alignment = 32
     spans, names, unknown = [], set(), set()
     for _ in range(tensors):
-        name = r.string(keep=4096) or '<long name>'
+        name = r.string(keep=4096)
+        name = '<long name>' if name is None else name
         if name in names:
             issues.append(f'Duplicate tensor name {name[:60]}')
         names.add(name)
@@ -242,13 +249,13 @@ def _parse_gguf(r, size, issues, info):
         if begin < cursor:
             issues.append(f'Tensor {name[:60]} overlaps the previous tensor')
         elif begin - cursor >= alignment:
-            issues.append(f'Unexpected {begin - cursor}-byte gap before tensor {name[:60]}')
+            issues.append(f'Unexpected {_count(begin - cursor)}-byte gap before tensor {name[:60]}')
         cursor = max(cursor, end)
     data_end = data_start + cursor
     if data_end > size:
-        issues.append(f'Tensor data extends {data_end - size} bytes beyond end of file')
+        issues.append(f'Tensor data extends {_count(data_end - size)} bytes beyond end of file')
     elif not unknown and size - data_end >= alignment:
-        issues.append(f'{size - data_end} trailing bytes after tensor data')
+        issues.append(f'{_count(size - data_end)} trailing bytes after tensor data')
 
 
 def sniff(path, size):
