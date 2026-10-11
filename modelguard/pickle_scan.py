@@ -19,6 +19,8 @@ DANGEROUS_MODULES = {
 }
 DANGEROUS_BUILTINS = {'eval', 'exec', 'compile', 'open', '__import__', 'getattr', 'setattr', 'globals',
                       'locals', 'input', 'breakpoint', 'vars', 'delattr'}
+SAFE_BUILTINS = {'set', 'frozenset', 'dict', 'list', 'tuple', 'int', 'float', 'complex', 'bool', 'str', 'bytes',
+                 'bytearray', 'slice', 'range', 'object'}
 SAFE_GLOBALS = {
     ('collections', 'OrderedDict'), ('collections', 'defaultdict'), ('torch._utils', '_rebuild_tensor_v2'),
     ('torch._utils', '_rebuild_tensor'), ('torch._utils', '_rebuild_parameter'),
@@ -37,6 +39,10 @@ STRING_OPS = {'SHORT_BINUNICODE', 'BINUNICODE', 'BINUNICODE8', 'UNICODE', 'STRIN
 def classify(module, name):
     """Return 'high', 'review' or None for a (module, name) global import."""
     if (module, name) in SAFE_GLOBALS or (module, name) in SAFE_PREFIXES:
+        return None
+    if module in ('builtins', '__builtin__') and name in SAFE_BUILTINS:
+        return None
+    if module.startswith('torch.nn.modules.') or module.startswith('torch.nn.parameter'):
         return None
     root = module.split('.')[0]
     if root in DANGEROUS_MODULES or module in DANGEROUS_MODULES or (root in ('builtins', '__builtin__') and name in DANGEROUS_BUILTINS):

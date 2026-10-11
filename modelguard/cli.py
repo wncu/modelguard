@@ -48,13 +48,19 @@ def content_findings(path, name, size):
         result = scan_npy(path) if kind == 'npy' else scan_file(path)
         if result:
             found, notes, label_kind = result
-            seen = set()
+            high, review = {}, {}
             for module, attr, sev in found:
-                if sev and (module, attr) not in seen:
-                    seen.add((module, attr))
-                    label = 'Dangerous' if sev == 'high' else 'Non-allowlisted'
-                    out.append({'rule': 'MG006', 'severity': sev, 'file': name,
-                                'message': f'{label} global in {label_kind} stream: {module}.{attr} (static opcode scan, not executed)'})
+                if sev == 'high':
+                    high.setdefault(f'{module}.{attr}', None)
+                elif sev:
+                    review.setdefault(module.split('.')[0], {})[f'{module}.{attr}'] = None
+            for target in high:
+                out.append({'rule': 'MG006', 'severity': 'high', 'file': name,
+                            'message': f'Dangerous global in {label_kind} stream: {target} (static opcode scan, not executed)'})
+            for package, names in review.items():
+                shown = ', '.join(list(names)[:4]) + (f' (+{len(names) - 4} more)' if len(names) > 4 else '')
+                out.append({'rule': 'MG006', 'severity': 'review', 'file': name,
+                            'message': f'{label_kind} stream imports {len(names)} non-allowlisted global(s) from package {package!r}: {shown}. Loading would run code from that package.'})
             for note in dict.fromkeys(notes):
                 out.append({'rule': 'MG007', 'severity': 'review', 'file': name, 'message': note})
     return out
