@@ -7,3 +7,5 @@ reports/
 *.safetensors
 *.pt
 *.pth
+build/
+*.egg-info/
