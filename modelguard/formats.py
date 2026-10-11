@@ -3,7 +3,7 @@ import json
 import math
 import struct
 
-MAX_ST_HEADER = 100 * 1024 * 1024
+MAX_ST_HEADER = 16 * 1024 * 1024  # real headers are KBs to a few MB; format spec allows 100 MB
 ST_DTYPES = {'BOOL': 1, 'U8': 1, 'I8': 1, 'F8_E5M2': 1, 'F8_E4M3': 1, 'I16': 2, 'U16': 2, 'F16': 2, 'BF16': 2,
              'I32': 4, 'U32': 4, 'F32': 4, 'I64': 8, 'U64': 8, 'F64': 8}
 
@@ -76,6 +76,11 @@ class _Reader:
     def u(self, fmt):
         return struct.unpack('<' + fmt, self.take(struct.calcsize(fmt)))[0]
 
+    def skip(self, n):
+        if n < 0 or self.s.tell() + n > self.size:
+            raise ValueError('skip past end of file')
+        self.s.seek(n, 1)
+
     def string(self):
         n = self.u('Q')
         if n > MAX_STR:
@@ -94,7 +99,7 @@ class _Reader:
             if count > MAX_ARRAY:
                 raise ValueError('array too large')
             if inner in GGUF_SCALARS:
-                self.take(GGUF_SCALARS[inner] * count)
+                self.skip(GGUF_SCALARS[inner] * count)
             else:
                 for _ in range(count):
                     self.skip_value(inner, depth + 1)

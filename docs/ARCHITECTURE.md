@@ -14,3 +14,13 @@ No cuentas, base de datos, Redis, Celery, GPU central, API de ModelGuard ni fact
 CSP restringe scripts a recursos propios y conexiones a Hugging Face. Renderizar informes con textContent evita interpretar HTML. Límites: 2 MiB de metadatos/importación; 1 MiB de historial; hashing CLI de 1 MiB por bloque. Inventario y JSON crecen con la cantidad de archivos, no con el volumen de pesos. La web no calcula hashes todavía.
 
 La CLI no es una sandbox: no abrir repositorios que se modifican concurrentemente. Omite symlinks encontrados pero no ofrece protección contra carreras de enlaces ni directorios padre enlazados. Un futuro modo endurecido usará apertura sin seguimiento de enlaces y límites de número de archivos. El MVP consulta HTTPS al dominio fijo; urllib sigue redirecciones del servicio sin credenciales.
+
+## Presupuesto de recursos
+
+El CLI está pensado para correr en segundo plano sin molestar el equipo.
+
+- **GPU: nunca.** No carga tensores ni runtimes de inferencia.
+- **Memoria plana (~25 MB de pico medido).** Solo lee cabeceras y opcodes. Los pickles se analizan en streaming con límites de lectura (32 MB por argumento, 256 MB por flujo, 512 MB por zip); safetensors lee una cabecera de hasta 16 MB; en GGUF los arrays se saltan con `seek` en vez de leerse. El hash usa un único búfer de 1 MiB.
+- **CPU mínima.** El proceso baja su prioridad con `nice 15`, el análisis de pickle tiene tope de 10 s y 5 M opcodes por archivo, y un archivo que supera un límite se reporta como incompleto (MG007) en lugar de agotar recursos.
+- **E/S discreta.** Solo se lee el archivo completo con `--hash`; ahí se pide al kernel descartar la caché de páginas para no desplazar otros datos.
+- **Medido** (Python 3.13, equipo local): GGUF Qwen2.5-0.5B Q4 (372 MB) con `--hash`: 1.7 s, 23 MB; YOLOv8n `.pt`: 0.08 s; pickle de 3 M enteros: ~6 s (tope de opcodes); mutaciones aleatorias de 5 modelos reales: sin fallos ni cuelgues.

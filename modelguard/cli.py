@@ -74,6 +74,25 @@ def base(target):
             'limitations': ['No malware certification.', 'No backdoor detection or inference performed.',
                             'Hashes identify bytes; they do not establish trust.']}
 
+def sha256_file(path):
+    """Stream SHA-256 with one reusable 1 MiB buffer and without filling the page cache."""
+    h = hashlib.sha256()
+    buf = bytearray(1024 * 1024)
+    view = memoryview(buf)
+    with open(path, 'rb', buffering=0) as stream:
+        while True:
+            n = stream.readinto(buf)
+            if not n:
+                break
+            h.update(view[:n])
+            if hasattr(os, 'posix_fadvise'):
+                try:
+                    os.posix_fadvise(stream.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
+                except OSError:
+                    pass
+    return h.hexdigest()
+
+
 def local_scan(target, hashes=False):
     root = Path(target)
     if root.is_symlink() or not root.exists():
@@ -89,11 +108,7 @@ def local_scan(target, hashes=False):
         name = path.name if root.is_file() else path.relative_to(root).as_posix()
         item = {'path': name, 'size': path.stat().st_size}
         if hashes:
-            h = hashlib.sha256()
-            with path.open('rb') as stream:
-                for chunk in iter(lambda: stream.read(1024 * 1024), b''):
-                    h.update(chunk)
-            item['sha256'] = h.hexdigest()
+            item['sha256'] = sha256_file(path)
         report['files'].append(item)
         try:
             report['findings'] += content_findings(path, name, item['size'])
@@ -183,6 +198,10 @@ def main():
     for p in (local, hub, ver):
         p.add_argument('--output', type=Path)
     args = parser.parse_args()
+    try:  # be a polite background citizen: lowest CPU priority, idle I/O class where available
+        os.nice(15)
+    except (OSError, AttributeError):
+        pass
     try:
         if args.mode == 'scan':
             result = local_scan(args.target, args.hash)

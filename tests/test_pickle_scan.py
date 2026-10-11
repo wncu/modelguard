@@ -70,3 +70,20 @@ class EvasionTests(unittest.TestCase):
         self.assertIn(('notes.txt', 'MG006', 'high'), by_file)
         self.assertIn(('weights.safetensors', 'MG010', 'high'), by_file)
         self.assertIn(('obj.npy', 'MG006', 'high'), by_file)
+
+
+class BoundsTests(unittest.TestCase):
+    def test_text_opcode_pickle_in_small_zip_member(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            z = Path(tmp) / 'm.pt'
+            with zipfile.ZipFile(z, 'w') as zf:
+                zf.writestr('a/data.pkl', pickle.dumps(Evil(), protocol=0))
+            found, notes, _ = scan_file(z)
+            self.assertEqual(notes, [])
+            self.assertEqual(found[0][2], 'high')
+
+    def test_limits_report_incomplete_not_crash(self):
+        found, notes = scan_pickle(pickle.dumps([b'x' * 5000]), total=100)
+        self.assertTrue(any('limit' in n for n in notes))
+        found, notes = scan_pickle(pickle.dumps(Evil()), total=10_000_000)
+        self.assertTrue(found)

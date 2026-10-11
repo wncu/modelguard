@@ -1,10 +1,13 @@
 """Static pickle opcode analysis. Uses pickletools.genops only: never unpickles."""
 import io
+import time
 import pickletools
 import zipfile
 
 MAX_PICKLE = 256 * 1024 * 1024
 MAX_OPS = 5_000_000
+MAX_READ = 32 * 1024 * 1024
+MAX_SECONDS = 10.0
 
 DANGEROUS_MODULES = {
     'os', 'posix', 'nt', 'subprocess', 'sys', 'socket', 'shutil', 'pty', 'commands', 'importlib',
@@ -53,15 +56,60 @@ def classify(module, name):
 MAX_STREAMS = 5  # legacy (pre-zip) torch files chain several pickles before the raw storages
 
 
-def scan_pickle(data):
-    """Scan consecutive pickle streams. Returns (globals, notes); globals = [(module, name, severity)]."""
+class _Limit(ValueError):
+    pass
+
+
+class _Limited:
+    """Read-only wrapper bounding total bytes, single-read size and wall time, so memory and CPU stay flat."""
+
+    def __init__(self, stream, total=MAX_PICKLE, deadline=MAX_SECONDS):
+        self.s, self.left, self.end = stream, total, time.monotonic() + deadline
+
+    def _check(self, n):
+        if n > MAX_READ:
+            raise _Limit('single opcode argument too large')
+        if n > self.left:
+            raise _Limit('byte limit reached')
+        if time.monotonic() > self.end:
+            raise _Limit('time limit reached')
+
+    def read(self, n=-1):
+        self._check(MAX_READ if n < 0 else n)
+        data = self.s.read(n)
+        self.left -= len(data)
+        return data
+
+    def readline(self, limit=-1):
+        self._check(0)
+        data = self.s.readline(1 << 16 if limit < 0 else min(limit, 1 << 16))
+        self.left -= len(data)
+        return data
+
+    def tell(self):
+        return self.s.tell()
+
+    def seek(self, *args):
+        return self.s.seek(*args)
+
+
+def scan_pickle(source, total=MAX_PICKLE):
+    """Scan consecutive pickle streams from bytes or a binary file object, in bounded memory.
+
+    Returns (globals, notes); globals = [(module, name, severity)]."""
     found, notes = [], []
-    stream = io.BytesIO(data)
-    for index in range(MAX_STREAMS):
+    stream = _Limited(io.BytesIO(source) if isinstance(source, (bytes, bytearray)) else source, total)
+    for _ in range(MAX_STREAMS):
         f, n = _scan_stream(stream)
         found += f
         notes += n
-        if n or stream.read(1) != b'\x80':
+        if n:
+            break
+        try:
+            nxt = stream.read(1)
+        except ValueError:
+            break
+        if nxt != b'\x80':
             break
         stream.seek(-1, 1)
     return found, notes
@@ -96,6 +144,8 @@ def _scan_stream(stream):
                 else:
                     found.append(('?', '?', 'high'))
                     notes.append('STACK_GLOBAL with unresolved operands')
+    except _Limit as exc:
+        notes.append(f'Scan limit reached ({exc}); result incomplete')
     except Exception as exc:  # genops raises ValueError/KeyError/struct errors on malformed data
         notes.append('Malformed or truncated pickle: ' + type(exc).__name__)
     return found, notes
@@ -112,10 +162,7 @@ def scan_npy(path):
         header = stream.read(min(hlen, 65536))
         if b"'O'" not in header and b'|O' not in header and b'"O"' not in header:
             return None
-        data = stream.read(MAX_PICKLE + 1)
-    if len(data) > MAX_PICKLE:
-        return [], ['npy object payload exceeds size limit; not scanned'], 'npy-object'
-    found, notes = scan_pickle(data)
+        found, notes = scan_pickle(stream)
     return found, notes, 'npy-object'
 
 
@@ -128,10 +175,7 @@ def scan_file(path):
         if head[:1] != b'\x80' and not head[:1] in (b'(', b'c', b']', b'}'):
             return None
         stream.seek(0)
-        data = stream.read(MAX_PICKLE + 1)
-    if len(data) > MAX_PICKLE:
-        return [], ['Pickle exceeds size limit; not scanned'], 'pickle'
-    found, notes = scan_pickle(data)
+        found, notes = scan_pickle(stream)
     return found, notes, 'pickle'
 
 
@@ -149,8 +193,7 @@ def _scan_zip(path):
                     continue
                 budget -= info.file_size
                 with archive.open(info) as member:
-                    data = member.read(MAX_PICKLE + 1)
-                f, n = scan_pickle(data)
+                    f, n = scan_pickle(member, min(info.file_size + 1, MAX_PICKLE))
                 found += f
                 notes += n
     except (zipfile.BadZipFile, OSError, RuntimeError) as exc:
