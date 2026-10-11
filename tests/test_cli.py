@@ -179,7 +179,7 @@ class ContentIntegrationTests(unittest.TestCase):
                 zf.writestr('archive/data.pkl', pickle.dumps(1))
             data = bytearray(z.read_bytes())
             cd = data.find(b'PK\x01\x02')
-            data[cd + 8] |= 0x08                     # UTF-8 name flag (bit 11) in the central directory
+            data[cd + 9] |= 0x08                     # UTF-8 name flag: bit 11 of the flags field (high byte)
             data[cd + 46] = 0xff                     # first name byte: invalid UTF-8
             z.write_bytes(bytes(data))
             (Path(tmp) / 'model.pkl').write_bytes(pickle.dumps(Evil()))
