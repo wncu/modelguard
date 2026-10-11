@@ -25,7 +25,8 @@ Open http://127.0.0.1:8000. Import the CLI report or inspect selected filenames.
 | SHA-256 streaming | CLI, explicit `--hash` |
 | `config.json` / `auto_map` review signal | Local CLI, bounded 2 MiB |
 | JSON export and browser history | Implemented, one report up to 1 MiB in localStorage |
-| Pickle opcode scanning, GGUF/safetensors structure validation | Planned |
+| Pickle opcode scanning (raw and PyTorch zip), GGUF/safetensors header validation | Local CLI, static, bounded; allowlist heuristic |
+| Python AST, dependency review, signature (not just extension) confirmation | Planned |
 | Behavioral trigger tests, tool-call evaluation, weight analysis | Research roadmap; not implemented |
 | "Clean" / "100% safe" badge | Deliberately unsupported |
 

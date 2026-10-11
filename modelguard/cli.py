@@ -9,6 +9,9 @@ from pathlib import Path
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
+from .formats import check_gguf, check_safetensors
+from .pickle_scan import scan_file
+
 LIMIT = 2 * 1024 * 1024
 
 def findings(names):
@@ -23,11 +26,40 @@ def findings(names):
                            'message': 'Code or native executable present; not executed or inspected by this rule.'})
     return result
 
+PICKLE_SUFFIXES = {'.pkl', '.pickle', '.pt', '.pth', '.bin', '.ckpt'}
+
+
+def content_findings(path, name, size):
+    """Static checks by file type. Parsers read headers/opcodes only and never execute content."""
+    out = []
+    suffix = path.suffix.lower()
+    if suffix == '.safetensors':
+        for issue in check_safetensors(path, size):
+            out.append({'rule': 'MG008', 'severity': 'review', 'file': name, 'message': 'safetensors: ' + issue})
+    elif suffix == '.gguf':
+        for issue in check_gguf(path, size)[0]:
+            out.append({'rule': 'MG009', 'severity': 'review', 'file': name, 'message': 'GGUF: ' + issue})
+    elif suffix in PICKLE_SUFFIXES:
+        result = scan_file(path)
+        if result:
+            found, notes, kind = result
+            seen = set()
+            for module, attr, sev in found:
+                if sev and (module, attr) not in seen:
+                    seen.add((module, attr))
+                    label = 'Dangerous' if sev == 'high' else 'Non-allowlisted'
+                    out.append({'rule': 'MG006', 'severity': sev, 'file': name,
+                                'message': f'{label} global in {kind} stream: {module}.{attr} (static opcode scan, not executed)'})
+            for note in dict.fromkeys(notes):
+                out.append({'rule': 'MG007', 'severity': 'review', 'file': name, 'message': note})
+    return out
+
+
 def base(target):
     return {'schema_version': '1.0', 'scanner_version': '0.1.0',
             'created_at': datetime.now(timezone.utc).isoformat(), 'target': target,
             'status': 'insufficient_evidence', 'files': [], 'findings': [],
-            'coverage': {'inventory': False, 'content': False, 'behavior': False, 'weights': False},
+            'coverage': {'inventory': False, 'static_formats': False, 'content': False, 'behavior': False, 'weights': False},
             'limitations': ['No malware certification.', 'No backdoor detection or inference performed.',
                             'Hashes identify bytes; they do not establish trust.']}
 
@@ -52,6 +84,10 @@ def local_scan(target, hashes=False):
                     h.update(chunk)
             item['sha256'] = h.hexdigest()
         report['files'].append(item)
+        try:
+            report['findings'] += content_findings(path, name, item['size'])
+        except OSError as exc:
+            report['limitations'].append(f'Could not read {name}: {type(exc).__name__}')
         if path.name == 'config.json':
             if item['size'] > LIMIT:
                 report['limitations'].append('Oversized config skipped: ' + name)
@@ -65,7 +101,8 @@ def local_scan(target, hashes=False):
                     report['findings'].append({'rule': 'MG005', 'severity': 'review', 'file': name, 'message': 'Invalid config JSON'})
     report['findings'] += findings(x['path'] for x in report['files'])
     report['coverage']['inventory'] = True
-    report['limitations'].append('Only config.json content inspected; no other file content inspection. Symlink races are outside this MVP threat model; scan immutable copies.')
+    report['coverage']['static_formats'] = True
+    report['limitations'].append('Static checks only: config.json, pickle opcodes, safetensors/GGUF headers. Pickle allowlist may miss novel gadgets; no tensor or behavior analysis. Symlink races are outside this MVP threat model; scan immutable copies.')
     return report
 
 def hub_scan(repo, revision='main'):

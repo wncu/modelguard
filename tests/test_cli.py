@@ -45,4 +45,21 @@ class ScanTests(unittest.TestCase):
             fetch.return_value.__enter__.return_value.read.return_value=b'{}'
             with self.assertRaises(ValueError):hub_scan('org/model')
 
+class ContentIntegrationTests(unittest.TestCase):
+    def test_malicious_pickle_and_bad_safetensors_flagged(self):
+        import os, pickle, struct
+        class Evil:
+            def __reduce__(self): return (os.system, ('echo no',))
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp)
+            (p/'model.pkl').write_bytes(pickle.dumps(Evil()))
+            (p/'bad.safetensors').write_bytes(struct.pack('<Q', 1 << 40))
+            report = local_scan(tmp)
+        rules = {(f['rule'], f['severity']) for f in report['findings']}
+        self.assertIn(('MG006', 'high'), rules)
+        self.assertIn(('MG008', 'review'), rules)
+        self.assertTrue(report['coverage']['static_formats'])
+        self.assertFalse(report['coverage']['content'])
+        self.assertEqual(report['status'], 'insufficient_evidence')
+
 if __name__=='__main__': unittest.main()
