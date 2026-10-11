@@ -171,6 +171,22 @@ class ContentIntegrationTests(unittest.TestCase):
         self.assertFalse(report['coverage']['content'])
         self.assertEqual(report['summary']['findings_high'], sum(f['severity'] == 'high' for f in report['findings']))
 
+    def test_invalid_utf8_zip_name_does_not_abort_scan(self):
+        import zipfile
+        with tempfile.TemporaryDirectory() as tmp:
+            z = Path(tmp) / 'bad_name.pt'
+            with zipfile.ZipFile(z, 'w') as zf:
+                zf.writestr('archive/data.pkl', pickle.dumps(1))
+            data = bytearray(z.read_bytes())
+            cd = data.find(b'PK\x01\x02')
+            data[cd + 8] |= 0x08                     # UTF-8 name flag (bit 11) in the central directory
+            data[cd + 46] = 0xff                     # first name byte: invalid UTF-8
+            z.write_bytes(bytes(data))
+            (Path(tmp) / 'model.pkl').write_bytes(pickle.dumps(Evil()))
+            report = local_scan(tmp)
+        self.assertIn(('MG006', 'high'), rules(report))
+        self.assertTrue(any(f['file'] == 'bad_name.pt' and f['rule'] == 'MG007' for f in report['findings']))
+
     def test_raw_bin_not_misreported(self):
         with tempfile.TemporaryDirectory() as tmp:
             (Path(tmp) / 'vectors.bin').write_bytes(os.urandom(4096).replace(b'\x80', b'\x00'))
